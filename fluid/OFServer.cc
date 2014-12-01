@@ -106,7 +106,7 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
         else {
             struct ofp_error_msg msg;
             msg.header.version = version;
-            msg.header.type = OFPT_FEATURES_REQUEST;
+            msg.header.type = OFPT_ERROR;
             msg.header.length = htons(12);
             msg.header.xid = ((uint32_t*) data)[1];
             msg.type = htons(OFPET_HELLO_FAILED);
