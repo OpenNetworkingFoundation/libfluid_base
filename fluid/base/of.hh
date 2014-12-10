@@ -144,4 +144,17 @@ struct ofp_error_msg {
 };
 OFP_ASSERT(sizeof(struct ofp_error_msg) == 12);
 
+/* OFPT_FEATURES_REPLY: Reply to features request message (switch -> controller). */
+struct ofp_switch_features {
+    struct ofp_header header;
+    uint64_t datapath_id;
+    uint32_t n_buffers;
+    uint8_t n_tables;
+    uint8_t auxiliary_id;
+    uint8_t pad[2];
+    uint32_t capabilities;
+    uint32_t reserved;
+};
+OFP_ASSERT(sizeof(struct ofp_switch_features) == 32);
+
 #endif

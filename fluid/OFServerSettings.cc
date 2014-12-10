@@ -12,6 +12,12 @@ OFServerSettings::OFServerSettings() {
     this->dispatch_all_messages(false);
     this->use_hello_elements(false);
     this->keep_data_ownership(true);
+    this->is_controller(true);
+    this->datapath_id(0);
+    this->auxiliary_id(0);
+    this->n_buffers(0);
+    this->n_tables(0);
+    this->capabilities(0);
 }
 
 OFServerSettings& OFServerSettings::supported_version(const uint8_t version) {
@@ -39,7 +45,7 @@ void OFServerSettings::add_version(const uint8_t version) {
 uint32_t* OFServerSettings::supported_versions() {
     // We return a pointer because an OFServerSettings object is supposed to
     // be exclusively user by an OFServer instance which has a copy of it.
-    
+
     // TODO: since this->_supported_versions is just an uint32_t, we can only
     // support OpenFlow versions lower than 31. It might be a problem some day,
     // so it would be nice to change the implementation to a proper uint32_t
@@ -103,6 +109,60 @@ bool OFServerSettings::keep_data_ownership() {
 OFServerSettings& OFServerSettings::keep_data_ownership(const bool keep_data_ownership) {
     this->_keep_data_ownership = keep_data_ownership;
     return *this;
+}
+
+bool OFServerSettings::is_controller() {
+    return this->_is_controller;
+}
+
+OFServerSettings& OFServerSettings::is_controller(const bool is_controller) {
+    this->_is_controller = is_controller;
+    return *this;
+}
+
+OFServerSettings& OFServerSettings::datapath_id(const uint64_t di) {
+    this->_datapath_id = di;
+    return *this;
+}
+
+uint64_t OFServerSettings::datapath_id() {
+    return this->_datapath_id;
+}
+
+OFServerSettings& OFServerSettings::n_buffers(const uint32_t nb) {
+    this->_n_buffers = nb;
+    return *this;
+}
+
+uint32_t OFServerSettings::n_buffers() {
+    return this->_n_buffers;
+}
+
+OFServerSettings& OFServerSettings::n_tables(const uint8_t nt) {
+    this->_n_tables = nt;
+    return *this;
+}
+
+uint8_t OFServerSettings::n_tables() {
+    return this->_n_tables;
+}
+
+OFServerSettings& OFServerSettings::auxiliary_id(const uint8_t ai) {
+    this->_auxiliary_id = ai;
+    return *this;
+}
+
+uint8_t OFServerSettings::auxiliary_id() {
+    return this->_auxiliary_id;
+}
+
+OFServerSettings& OFServerSettings::capabilities(const uint32_t ca) {
+    this->_capabilities = ca;
+    return *this;
+}
+
+uint32_t OFServerSettings::capabilities() {
+    return this->_capabilities;
 }
 
 }
