@@ -63,7 +63,7 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
     uint8_t version = ((uint8_t*) data)[0];
     uint8_t type = ((uint8_t*) data)[1];
     OFConnection* cc = (OFConnection*) c->get_manager();
-    
+
     // We trust that the other end is using the negotiated protocol version
     // after the handshake is done. Should we?
 
@@ -96,12 +96,14 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
         }
 
         if (*this->ofsc.supported_versions() & client_supported_versions) {
-            struct ofp_header msg;
-            msg.version = ((uint8_t*) data)[0];
-            msg.type = OFPT_FEATURES_REQUEST;
-            msg.length = htons(8);
-            msg.xid = ((uint32_t*) data)[1];
-            c->send(&msg, 8);
+            if (ofsc.is_controller()) {
+                struct ofp_header msg;
+                msg.version = ((uint8_t*) data)[0];
+                msg.type = OFPT_FEATURES_REQUEST;
+                msg.length = htons(8);
+                msg.xid = ((uint32_t*) data)[1];
+                c->send(&msg, 8);
+            }
         }
         else {
             struct ofp_error_msg msg;
@@ -130,8 +132,31 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
         if (ofsc.dispatch_all_messages()) goto dispatch; else goto done;
     }
 
+    if (ofsc.handshake() and !ofsc.is_controller() and type == OFPT_FEATURES_REQUEST) {
+        struct ofp_switch_features reply;
+
+        cc->set_version(((uint8_t*) data)[0]);
+        cc->set_state(OFConnection::STATE_RUNNING);
+        reply.header.version = ((uint8_t*) data)[0];
+        reply.header.type = OFPT_FEATURES_REPLY;
+        reply.header.length = htons(sizeof(reply));
+        reply.header.xid = ((uint32_t*) data)[1];
+        reply.datapath_id = ofsc.datapath_id();
+        reply.n_buffers = ofsc.n_buffers();
+        reply.n_tables = ofsc.n_tables();
+        reply.auxiliary_id = ofsc.auxiliary_id();
+        reply.capabilities = ofsc.capabilities();
+        cc->send(&reply, sizeof(reply));
+
+        if (ofsc.liveness_check())
+            c->add_timed_callback(send_echo, ofsc.echo_interval() * 1000, cc);
+        connection_callback(cc, OFConnection::EVENT_ESTABLISHED);
+
+        if (ofsc.dispatch_all_messages()) goto dispatch; else goto done;
+    }
+
     // Handle feature replies
-    if (ofsc.handshake() and type == OFPT_FEATURES_REPLY) {
+    if (ofsc.handshake() and ofsc.is_controller() and type == OFPT_FEATURES_REPLY) {
         cc->set_version(((uint8_t*) data)[0]);
         cc->set_state(OFConnection::STATE_RUNNING);
         if (ofsc.liveness_check())
@@ -149,7 +174,7 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
         if (this->ofsc.keep_data_ownership())
             this->free_data(data);
         return;
-        
+
     // Free the message (if necessary) and return
     done:
         this->free_data(data);
