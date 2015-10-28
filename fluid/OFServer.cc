@@ -178,7 +178,8 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
     }
 
     // Handle version negotiation failing
-    if (ofsc.handshake() and type == OFPT_ERROR) {
+    if (ofsc.handshake() and cc->get_state() == OFConnection::STATE_HANDSHAKE
+          and type == OFPT_ERROR) {
         cc->close();
         cc->set_state(OFConnection::STATE_FAILED);
         connection_callback(cc, OFConnection::EVENT_FAILED_NEGOTIATION);
