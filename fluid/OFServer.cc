@@ -1,5 +1,6 @@
 #include <string.h>
 #include <arpa/inet.h>
+#include <algorithm>
 
 #include "fluid/base/BaseOFConnection.hh"
 #include "fluid/base/BaseOFServer.hh"
@@ -84,21 +85,31 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
     if (ofsc.handshake() and type == OFPT_HELLO) {
 
         uint32_t client_supported_versions;
+        uint32_t overlap;
+        uint8_t max_version = this->ofsc.max_supported_version();
 
-        if (ofsc.use_hello_elements() &&
+        if (ofsc.use_hello_elements() && max_version >= 4 &&
             len > 8 &&
             ntohs(((uint16_t*) data)[4]) == OFPHET_VERSIONBITMAP &&
             ntohs(((uint16_t*) data)[5]) >= 8) {
+            // We've both sent and received a version bitmap
             client_supported_versions = ntohl(((uint32_t*) data)[3]);
         }
         else {
-            client_supported_versions = 1 << version;
+            // Otherwise negotiation picks the minimum supported version
+            client_supported_versions = 1 << std::min(version, max_version);
         }
 
-        if (*this->ofsc.supported_versions() & client_supported_versions) {
+        overlap = *this->ofsc.supported_versions() & client_supported_versions;
+        if (overlap) {
             if (ofsc.is_controller()) {
+                uint8_t neg_version = 0;
                 struct ofp_header msg;
-                msg.version = ((uint8_t*) data)[0];
+                // Find the highest common support
+                while (overlap >>= 1) {
+                    neg_version++;
+                }
+                msg.version = neg_version;
                 msg.type = OFPT_FEATURES_REQUEST;
                 msg.length = htons(8);
                 msg.xid = ((uint32_t*) data)[1];
@@ -166,6 +177,14 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
         goto dispatch;
     }
 
+    // Handle version negotiation failing
+    if (ofsc.handshake() and type == OFPT_ERROR) {
+        cc->close();
+        cc->set_state(OFConnection::STATE_FAILED);
+        connection_callback(cc, OFConnection::EVENT_FAILED_NEGOTIATION);
+
+        if (ofsc.dispatch_all_messages()) goto dispatch; else goto done;
+    }
     goto dispatch;
 
     // Dispatch a message to the user callback and goto done
@@ -206,7 +225,7 @@ void OFServer::base_connection_callback(BaseOFConnection* c, BaseOFConnection::E
     if (event_type == BaseOFConnection::EVENT_UP) {
         if (ofsc.handshake()) {
             int msglen = 8;
-            if (ofsc.use_hello_elements()) {
+            if (this->ofsc.max_supported_version() >= 4 && ofsc.use_hello_elements()) {
                 msglen = 16;
             }
 
