@@ -59,11 +59,20 @@ void OFServer::set_config(OFServerSettings ofsc) {
     this->ofsc = ofsc;
 }
 
+static uint32_t get_highest_shared_version(uint32_t shared_versions) {
+    uint32_t ct=0;
+    while (shared_versions > 1) {
+      ct++;
+      shared_versions = shared_versions >> 1;
+    }
+    return ct;
+}
+
 void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len) {
     uint8_t version = ((uint8_t*) data)[0];
     uint8_t type = ((uint8_t*) data)[1];
     OFConnection* cc = (OFConnection*) c->get_manager();
-    
+
     // We trust that the other end is using the negotiated protocol version
     // after the handshake is done. Should we?
 
@@ -94,10 +103,12 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
         else {
             client_supported_versions = 1 << version;
         }
-
-        if (*this->ofsc.supported_versions() & client_supported_versions) {
+        uint32_t shared_versions;
+        if (shared_versions =
+            *this->ofsc.supported_versions() & client_supported_versions) {
             struct ofp_header msg;
-            msg.version = ((uint8_t*) data)[0];
+            // set as highest shared version
+            msg.version = get_highest_shared_version(shared_versions);
             msg.type = OFPT_FEATURES_REQUEST;
             msg.length = htons(8);
             msg.xid = ((uint32_t*) data)[1];
@@ -149,7 +160,7 @@ void OFServer::base_message_callback(BaseOFConnection* c, void* data, size_t len
         if (this->ofsc.keep_data_ownership())
             this->free_data(data);
         return;
-        
+
     // Free the message (if necessary) and return
     done:
         this->free_data(data);
