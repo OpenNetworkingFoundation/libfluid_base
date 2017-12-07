@@ -236,6 +236,21 @@ void BaseOFConnection::add_timed_callback(void* (*cb)(void*), int interval, void
     event_add(ev, &tv);
 }
 
+void BaseOFConnection::add_immediate_event(void* (*cb)(void*), void* arg) {
+    struct timed_callback* tc = new struct timed_callback;
+    tc->cb = cb;
+    tc->cb_arg = arg;
+    struct event_base* base = (struct event_base*) this->evloop->get_base();
+    // add timeout event with NULL timeval, which adds the event immediately
+    // to the event loop
+    event_base_once(base,
+                    -1,
+                    EV_TIMEOUT,
+                    BaseOFConnection::LibEventBaseOFConnection::timer_callback,
+                    tc,
+                    NULL); // timeout
+}
+
 void BaseOFConnection::set_manager(void* manager) {
     this->manager = manager;
 }

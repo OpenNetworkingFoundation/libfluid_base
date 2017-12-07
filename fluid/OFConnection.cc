@@ -58,6 +58,12 @@ void OFConnection::add_timed_callback(void* (*cb)(void*),
         this->conn->add_timed_callback(cb, interval, arg);
 }
 
+void OFConnection::add_immediate_event(void* (*cb)(void*), void* arg) {
+    if (this->conn != NULL) {
+        this->conn->add_immediate_event(cb, arg);
+    }
+}
+
 void* OFConnection::get_application_data() {
     return this->application_data;
 }

@@ -74,6 +74,19 @@ public:
     // TODO: add the option for the function to unschedule itself by returning
     // false
 
+    /**
+    Set up a function to be called immediately in the event loop. This can be
+    used to add events from an external source (i.e. not OVS) in a thread-safe
+    manner.
+
+    This method is thread-safe.
+
+    @param cb the callback function. It should accept a void* argument and
+              return a void*.
+    @param arg an argument to the callback function
+    */
+    void add_immediate_event(void* (*cb)(void*), void* arg);
+
     // TODO: these methods are not thread-safe, and they really aren't
     // currently called from more than one thread. But perhaps we should
     // consider that...
