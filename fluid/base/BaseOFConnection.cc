@@ -150,6 +150,7 @@ private:
 
     static void event_cb(struct bufferevent *bev, short events, void* arg);
     static void timer_callback(evutil_socket_t fd, short what, void *arg);
+    static void immediate_callback(evutil_socket_t fd, short what, void *arg);
     static void read_cb(struct bufferevent *bev, void* arg);
     static void close_cb(int fd, short which, void *arg);
 };
@@ -236,18 +237,18 @@ void BaseOFConnection::add_timed_callback(void* (*cb)(void*), int interval, void
     event_add(ev, &tv);
 }
 
-void BaseOFConnection::add_immediate_event(void* (*cb)(void*), void* arg) {
-    struct timed_callback* tc = new struct timed_callback;
-    tc->cb = cb;
-    tc->cb_arg = arg;
+void BaseOFConnection::add_immediate_event(void* (*cb)(std::shared_ptr<void>), std::shared_ptr<void> arg) {
+    auto ic = new struct immediate_callback;
+    ic->cb = cb;
+    ic->cb_arg = arg;
     struct event_base* base = (struct event_base*) this->evloop->get_base();
     // add timeout event with NULL timeval, which adds the event immediately
     // to the event loop
     event_base_once(base,
                     -1,
                     EV_TIMEOUT,
-                    BaseOFConnection::LibEventBaseOFConnection::timer_callback,
-                    tc,
+                    BaseOFConnection::LibEventBaseOFConnection::immediate_callback,
+                    ic,
                     NULL); // timeout
 }
 
@@ -328,6 +329,12 @@ void BaseOFConnection::LibEventBaseOFConnection::event_cb(struct bufferevent *be
 void BaseOFConnection::LibEventBaseOFConnection::timer_callback(evutil_socket_t fd, short what, void *arg) {
     struct BaseOFConnection::timed_callback* tc = static_cast<struct BaseOFConnection::timed_callback*>(arg);
     tc->cb(tc->cb_arg);
+}
+
+void BaseOFConnection::LibEventBaseOFConnection::immediate_callback(evutil_socket_t fd, short what, void *arg) {
+    auto ic = static_cast<struct BaseOFConnection::immediate_callback*>(arg);
+    ic->cb(ic->cb_arg);
+    delete ic;
 }
 
 void BaseOFConnection::LibEventBaseOFConnection::read_cb(struct bufferevent *bev, void* arg) {

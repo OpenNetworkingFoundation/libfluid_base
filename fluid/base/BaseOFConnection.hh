@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <vector>
+#include <memory>
 
 #include "fluid/base/EventLoop.hh"
 
@@ -81,11 +82,11 @@ public:
 
     This method is thread-safe.
 
-    @param cb the callback function. It should accept a void* argument and
+    @param cb the callback function. It should accept a shared_ptr argument and
               return a void*.
     @param arg an argument to the callback function
     */
-    void add_immediate_event(void* (*cb)(void*), void* arg);
+    void add_immediate_event(void* (*cb)(std::shared_ptr<void>), std::shared_ptr<void> arg);
 
     // TODO: these methods are not thread-safe, and they really aren't
     // currently called from more than one thread. But perhaps we should
@@ -150,6 +151,11 @@ private:
         void* (*cb)(void*);
         void* cb_arg;
         void* data;
+    };
+
+    struct immediate_callback {
+        void* (*cb)(std::shared_ptr<void>);
+	std::shared_ptr<void> cb_arg;
     };
     std::vector<struct timed_callback*> timed_callbacks;
 

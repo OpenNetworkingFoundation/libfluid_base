@@ -137,11 +137,11 @@ public:
 
     This method is thread-safe.
 
-    @param cb the callback function. It should accept a void* argument and
+    @param cb the callback function. It should accept a shared_ptr  argument and
               return a void*.
     @param arg an argument to the callback function
     */
-    void add_immediate_event(void* (*cb)(void*), void* arg);
+    void add_immediate_event(void* (*cb)(std::shared_ptr<void>), std::shared_ptr<void> arg);
 
     /**
     Get application data. This data is any piece of data you might want to 
