@@ -1,5 +1,10 @@
 # libfluid_base
 
+> There are some known issues in `v0.1.0` (especially involving version 
+> negotiation). For more information, fixes and extra features provided by the 
+> community, see the yet unreleased (and untested) 
+> [v0.2 branch](https://github.com/OpenNetworkingFoundation/libfluid_base/tree/0.2).
+
 **libfluid_base** is a library that provides a connectivity layer for the 
 OpenFlow protocol.
 
