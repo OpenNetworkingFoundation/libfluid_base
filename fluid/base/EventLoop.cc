@@ -8,8 +8,12 @@ namespace fluid_base {
 #define OF_MAX_LEN 0xFFFF
 
 // See FIXME in EventLoop::EventLoop
+
+#ifndef EVLOOP_NO_EXIT_ON_EMPTY
 extern "C" void event_base_add_virtual(struct event_base *);
 extern "C" void event_base_del_virtual(struct event_base *);
+#endif
+
 
 class EventLoop::LibEventEventLoop {
 private:
@@ -41,7 +45,9 @@ EventLoop::EventLoop(int id) {
     See:
     http://stackoverflow.com/questions/7645217/user-triggered-event-in-libevent
     */
-    event_base_add_virtual(this->m_implementation->base);
+#ifndef EVLOOP_NO_EXIT_ON_EMPTY
+   event_base_add_virtual(this->m_implementation->base);
+#endif
 }
 
 EventLoop::~EventLoop() {
@@ -56,8 +62,13 @@ void EventLoop::run() {
     event_base_dispatch(this->m_implementation->base);
     // See note in EventLoop::EventLoop. Here we disable the virtual event
     // to guarantee that nothing blocks.
+
+#ifndef EVLOOP_NO_EXIT_ON_EMPTY
     event_base_del_virtual(this->m_implementation->base);
     event_base_loop(this->m_implementation->base, EVLOOP_NONBLOCK);
+#else
+    event_base_loop(this->m_implementation->base, EVLOOP_NO_EXIT_ON_EMPTY);
+#endif
 }
 
 void EventLoop::stop() {
