@@ -11,6 +11,19 @@
 namespace fluid_base {
 class BaseOFHandler;
 
+#define OF_HEADER_LENGTH 8
+#define OF_HEADER_BUF_LENGTH 64
+
+enum bocType {
+        /** The buffer type for OF Basic Messages */
+        boc_OFMSG,
+        /** The buffer type for tun device traffic  */
+        boc_TUN,
+        /** The buffer type for tap device traffic  */
+        boc_TAP,
+        /** The buffer type not supported  */
+        boc_MAX
+};
 /**
 A BaseOFConnection wraps the basic functionalities of a network connection with
 OpenFlow-oriented messaging features. It uses an OFReadBuffer for building the
@@ -37,7 +50,8 @@ public:
                      BaseOFHandler* ofhandler,
                      EventLoop* evloop,
                      int fd,
-                     bool secure);
+                     bool secure,
+                     bocType boctype = boc_OFMSG);
     virtual ~BaseOFConnection();
 
     /** BaseOFConnection events. */
@@ -143,6 +157,7 @@ private:
     void* manager;
     bool secure;
     BaseOFHandler* ofhandler;
+    bocType boctype;
 
     bool running;
     

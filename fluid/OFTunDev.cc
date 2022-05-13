@@ -1,40 +1,44 @@
-#include "OFClient.hh"
+#include "OFTunDev.hh"
 #include "fluid/base/of.hh"
 
 namespace fluid_base {
 
-OFClient::OFClient(int id, std::string address, int port,
+OFTunDev::OFTunDev(int id, std::string devname, DevType devtype,
              const struct OFServerSettings ofsc) :
-        BaseOFClient(id, address, port) {
+        BaseOFTunDev(id, devname, devtype) {
     this->ofsc = ofsc;
     this->conn = NULL;
 }
 
-OFClient::~OFClient() {
+OFTunDev::~OFTunDev() {
     if (conn != NULL)
         delete conn;
 }
 
-bool OFClient::start(bool block) {
-    return BaseOFClient::start(block);
+bool OFTunDev::start(bool block) {
+    return BaseOFTunDev::start(block);
 }
 
 
-void OFClient::start_conn(){
-    BaseOFClient::start_conn();
+void OFTunDev::start_conn(){
+    BaseOFTunDev::start_conn();
 }
 
-void OFClient::stop_conn(){
+void OFTunDev::stop_conn(){
     if (conn != NULL)
         conn->close();
 }
 
-void OFClient::stop() {
+void OFTunDev::stop() {
     stop_conn();
-    BaseOFClient::stop();
+    BaseOFTunDev::stop();
 }
 
-void OFClient::base_message_callback(BaseOFConnection* c, void* data, size_t len) {
+void OFTunDev::base_message_callback(BaseOFConnection* c, void* data, size_t len) {
+    ((uint8_t*) data)[0] = (uint8_t) 0;
+    ((uint8_t*) data)[1] = OFPT_TUN_PACKET;
+    ((uint16_t*) data)[1] = htons(len);
+    ((uint32_t*) data)[1] = htonl(0);
     uint8_t type = ((uint8_t*) data)[1];
     OFConnection* cc = (OFConnection*) c->get_manager();
 
@@ -49,7 +53,7 @@ void OFClient::base_message_callback(BaseOFConnection* c, void* data, size_t len
         ((uint16_t*) msg)[1] = htons(8);
         ((uint32_t*) msg)[1] = ((uint32_t*) data)[1];
         // TODO: copy echo data
-        c->send(msg, 8);
+        //c->send(msg, 8);
 
         if (ofsc.dispatch_all_messages()) goto dispatch; else goto done;
     }
@@ -138,41 +142,52 @@ void OFClient::base_message_callback(BaseOFConnection* c, void* data, size_t len
         return;
 }
 
-void OFClient::base_connection_callback(BaseOFConnection* c, BaseOFConnection::Event event_type) {
+void OFTunDev::base_connection_callback(BaseOFConnection* c, BaseOFConnection::Event event_type) {
     /* If the connection was closed, destroy it.
     There's no need to notify the user, since a DOWN event already
     means a CLOSED event will happen and nothing should be expected from
     the connection. */
     if (event_type == BaseOFConnection::EVENT_CLOSED) {
-        BaseOFClient::base_connection_callback(c, event_type);
+        BaseOFTunDev::base_connection_callback(c, event_type);
         // TODO: delete the OFConnection?
         return;
     }
 
     int conn_id = c->get_id();
     if (event_type == BaseOFConnection::EVENT_UP) {
+        this->conn = new OFConnection(CONNType_TunDev, c, this);
         if (ofsc.handshake()) {
             struct ofp_hello msg;
             msg.header.version = this->ofsc.max_supported_version();
             msg.header.type = OFPT_HELLO;
             msg.header.length = htons(8);
             msg.header.xid = htonl(HELLO_XID);
-            c->send(&msg, 8);
+            // TODO: stream tunnel ping traffic to get tunnel state (ping delay, traffic lost etc).
+            //c->send(&msg, 8);
         }
 
-		this->conn = new OFConnection(CONNType_Client, c, this);
         connection_callback(this->conn, OFConnection::EVENT_STARTED);
+
+        if(0) {
+        // here we work around to make tun dev up.
+        std::shared_ptr<void> tdev_eca(this->conn);
+
+        c->add_immediate_event(up_event_cb, tdev_eca);
+        }
+        else {
+            up_event_d(this->conn);
+        }
     }
     else if (event_type == BaseOFConnection::EVENT_DOWN) {
         connection_callback(this->conn, OFConnection::EVENT_CLOSED);
     }
 }
 
-void OFClient::free_data(void* data) {
-    BaseOFClient::free_data(data);
+void OFTunDev::free_data(void* data) {
+    BaseOFTunDev::free_data(data);
 }
 
-void* OFClient::send_echo(void* arg) {
+void* OFTunDev::send_echo(void* arg) {
     OFConnection* cc = static_cast<OFConnection*>(arg);
 
     if (!cc->is_alive()) {
@@ -181,15 +196,38 @@ void* OFClient::send_echo(void* arg) {
         return NULL;
     }
 
-    uint8_t msg[8];
-    memset((void*) msg, 0, 8);
-    msg[0] = (uint8_t) cc->get_version();
-    msg[1] = OFPT_ECHO_REQUEST;
-    ((uint16_t*) msg)[1] = htons(8);
-    ((uint32_t*) msg)[1] = htonl(ECHO_XID);
+    // TODO: some ioctl checks and issue an live imediat event
 
-    cc->set_alive(false);
-    cc->send(msg, 8);
+    return NULL;
+}
+
+void* OFTunDev::up_event_cb(std::shared_ptr<void> arg) {
+    OFConnection* cc = (OFConnection*)arg.get();
+
+    if (!cc->is_alive()) {
+        cc->close();
+        cc->get_ofhandler()->connection_callback(cc, OFConnection::EVENT_DEAD);
+        return NULL;
+    }
+
+    // TODO: some ioctl checks and issue an live imediat event
+    cc->set_state(OFConnection::STATE_RUNNING);
+    cc->get_ofhandler()->connection_callback(cc, OFConnection::EVENT_ESTABLISHED);
+
+    return NULL;
+}
+
+void* OFTunDev::up_event_d(OFConnection* cc) {
+
+    if (!cc->is_alive()) {
+        cc->close();
+        cc->get_ofhandler()->connection_callback(cc, OFConnection::EVENT_DEAD);
+        return NULL;
+    }
+
+    // TODO: some ioctl checks and issue an live imediat event
+    cc->set_state(OFConnection::STATE_RUNNING);
+    cc->get_ofhandler()->connection_callback(cc, OFConnection::EVENT_ESTABLISHED);
 
     return NULL;
 }

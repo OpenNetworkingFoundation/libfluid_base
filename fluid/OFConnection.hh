@@ -9,6 +9,13 @@ namespace fluid_base {
 class BaseOFConnection;
 class OFHandler;
 
+enum Conn_Type {
+    CONNType_Client,
+    CONNType_Server,
+    CONNType_TunDev,
+    STATE_UNKNOWN
+};
+
 /**
 An OFConnection represents an OpenFlow connection with basic protocol
 knowledge. It wraps a BaseOFConnection object, providing further abstractions
@@ -22,7 +29,7 @@ public:
     @param c the BaseOFConnection object that this OFConnection will represent
     @param ofhandler the OFHandler instance responsible for this OFConnection
     */
-    OFConnection(BaseOFConnection* c, OFHandler* ofhandler);
+    OFConnection(Conn_Type cnntype, BaseOFConnection* c, OFHandler* ofhandler);
 
     /** Represents the state of an OFConnection. */
     enum State {
@@ -67,6 +74,8 @@ public:
 
     /** Get the connection ID. */
     int get_id();
+
+    Conn_Type get_cnntype();
 
     /** Check if the connection is alive (responding to echo requests). */
     bool is_alive();
@@ -167,6 +176,7 @@ public:
 private:
     BaseOFConnection* conn;
     int id;
+    Conn_Type cnntype;
     State state;
     uint8_t version;
     bool alive;

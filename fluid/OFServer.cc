@@ -251,7 +251,7 @@ void OFServer::base_connection_callback(BaseOFConnection* c, BaseOFConnection::E
             c->send(&msg, msglen);
         }
 
-        cc = new OFConnection(c, this);
+        cc = new OFConnection(CONNType_Server, c, this);
         lock_ofconnections();
         ofconnections[conn_id] = cc;
         unlock_ofconnections();

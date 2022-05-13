@@ -74,6 +74,8 @@ enum ofp_type {
     /* Switch configuration messages. */
     OFPT_FEATURES_REQUEST,    /* Controller/switch message */
     OFPT_FEATURES_REPLY,      /* Controller/switch message */
+    OFPT_TUN_PACKET,          /* L3 packet from TUN interface prefixed with 8 length OFPT header*/
+    OFPT_SOCK_PACKET,         /* L3 packet from Socket Connection prefixed with 8 length OFPT header*/
 };
 
 /* Header on all OpenFlow packets. */

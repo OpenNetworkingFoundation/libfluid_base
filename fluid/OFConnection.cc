@@ -3,9 +3,10 @@
 
 namespace fluid_base {
 
-OFConnection::OFConnection(BaseOFConnection* c, OFHandler* ofhandler) {
+OFConnection::OFConnection(Conn_Type cnntype, BaseOFConnection* c, OFHandler* ofhandler) {
     this->ofhandler = ofhandler;
     this->conn = c;
+    this->cnntype = cnntype;
     this->conn->set_manager(this);
     this->id = c->get_id();
     this->set_state(STATE_HANDSHAKE);
@@ -16,6 +17,10 @@ OFConnection::OFConnection(BaseOFConnection* c, OFHandler* ofhandler) {
 
 int OFConnection::get_id() {
     return this->id;
+}
+
+Conn_Type OFConnection::get_cnntype() {
+    return this->cnntype;
 }
 
 bool OFConnection::is_alive() {
@@ -47,8 +52,13 @@ OFHandler* OFConnection::get_ofhandler() {
 }
 
 void OFConnection::send(void* data, size_t len) {
-    if (this->conn != NULL)
-        this->conn->send((uint8_t*) data, len);
+    if (this->conn == NULL) {
+        fprintf(stderr, "conn NULL\n");
+        return;
+    }
+    if(this->cnntype == CONNType_TunDev)
+        this->conn->send((uint8_t*) data + OF_HEADER_LENGTH, len - OF_HEADER_LENGTH);
+    else this->conn->send((uint8_t*) data, len);
 }
 
 void OFConnection::add_timed_callback(void* (*cb)(void*),

@@ -19,11 +19,22 @@
 #include "fluid/TLS.hh"
 #endif
 
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include "BaseOFConnection.hh"
 
 namespace fluid_base {
 
-#define OF_HEADER_LENGTH 8
+enum OFRbufType {
+        /** The buffer type for OF Basic Messages */
+        OFBT_OFMSG,
+        /** The buffer type for tun device traffic  */
+        OFBT_TUNDATA,
+        /** The buffer type for tap device traffic  */
+        OFBT_TAPDATA,
+        /** The buffer type not supported  */
+        OFBT_MAX
+};
 
 /** An OFReadBuffer holds an OpenFlow message while it is being read and built.
 
@@ -34,7 +45,8 @@ about read data.
 class BaseOFConnection::OFReadBuffer {
     public:
         /** Create an BaseOFConnection::OFReadBuffer. */
-        OFReadBuffer(){
+        OFReadBuffer(OFRbufType buftype = OFBT_OFMSG): bt_hdrlen{8,20,34}{
+            this->buftype = buftype;
             clear();
         }
         ~OFReadBuffer() {
@@ -54,8 +66,10 @@ class BaseOFConnection::OFReadBuffer {
         inline uint16_t get_read_len() {
             if (init)
                 return this->len - this->pos;
+            else if(ipv6hdr)
+                return OF_HEADER_BUF_LENGTH - header_pos;
             else
-                return OF_HEADER_LENGTH - header_pos;
+                return bt_hdrlen[this->buftype] - header_pos;
         }
 
         /** Get a pointer to the position at which a read operation should put
@@ -74,18 +88,91 @@ class BaseOFConnection::OFReadBuffer {
 
         @param read how many bytes were read
         */
-        inline void read_notify(uint16_t read) {
+        inline void read_notify(uint16_t read, bool force_ready = false) {
             if (init)
                 this->pos += read;
             else {
                 this->header_pos += read;
-                if (this->header_pos == OF_HEADER_LENGTH) {
-                    this->len = htons(*((uint16_t*) this->header + 1));
+
+                if (this->header_pos == bt_hdrlen[this->buftype]) {
+                    if(this->buftype == OFBT_OFMSG) {
+                        this->len = ntohs(*((uint16_t*) this->header + 1));
+                        this->data = new uint8_t[this->len];
+                        memcpy(this->data, this->header, bt_hdrlen[this->buftype]);
+                        this->pos += bt_hdrlen[this->buftype];
+                        init = true;
+                        return;
+                    }
+
+                    struct iphdr* ip4 = (struct iphdr*)this->header;
+
+                    if((ip4->version != 0x06) && (ip4->version != 0x04))
+                    {
+                        fprintf(stderr, "btype %d unsupported hdr from tun\n", this->buftype);
+                        this->len = 2000;
+                        this->data = new uint8_t[this->len];
+                        init = true;
+                        return;
+                    }
+
+                    if(ip4->version == 0x06) {
+                        struct ip6_hdr* ip6 = (struct ip6_hdr*)this->header;
+                        //init = false;
+                        ipv6hdr = true;
+                        return;
+                    }
+
+                    this->len = OF_HEADER_LENGTH;
+                    this->len += ntohs(ip4->tot_len);
                     this->data = new uint8_t[this->len];
-                    memcpy(this->data, this->header, OF_HEADER_LENGTH);
-                    this->pos += OF_HEADER_LENGTH;
+
+                    memcpy(this->data + OF_HEADER_LENGTH, this->header, bt_hdrlen[this->buftype]);
+                    this->pos += bt_hdrlen[this->buftype] + OF_HEADER_LENGTH;
+                    init = true;
+                } else if(this->header_pos == OF_HEADER_BUF_LENGTH) {
+                    struct iphdr* ip4 = (struct iphdr*)this->header;
+                    if((ip4->version != 0x06) || !ipv6hdr) {
+                        fprintf(stderr, "btype %d header size %u but not IPV6\n", this->buftype, OF_HEADER_BUF_LENGTH);
+                        this->len = 0;
+                        return;
+                    }
+                    uint16_t hdr_len = 0;
+                    struct ip6_hdr* ip6 = (struct ip6_hdr*)this->header;
+                    hdr_len += sizeof(struct ip6_hdr) + ntohs(ip6->ip6_plen);
+                    if(ip6->ip6_nxt == IPPROTO_HOPOPTS) {
+                        struct ip6_ext* ip6ext = (struct ip6_ext*)((char *)ip6 + sizeof(struct ip6_hdr));
+                        hdr_len += (ip6ext->ip6e_len + 1) << 3;
+                        if(ip6ext->ip6e_nxt == IPPROTO_FRAGMENT) {
+                            struct ip6_frag* ip6frag = (struct ip6_frag*)((char *)ip6ext + sizeof(struct ip6_ext));
+                            hdr_len += sizeof(ip6_frag);
+                        }
+                    }
+                    this->len = OF_HEADER_LENGTH;
+                    this->len += ntohs(ip6->ip6_plen) + hdr_len;
+                    this->data = new uint8_t[this->len];
+
+                    memcpy(this->data + OF_HEADER_LENGTH, this->header, bt_hdrlen[this->buftype]);
+                    this->pos += bt_hdrlen[this->buftype] + OF_HEADER_LENGTH;
+                    init = true;
+                } else {
+                    // IPv6 lenth less than 64
+                    struct iphdr* ip4 = (struct iphdr*)this->header;
+                    if((ip4->version != 0x06) || !ipv6hdr) {
+                        fprintf(stderr, "btype %d read IPV6 shorter than 64 bytes, but not IPv6\n", this->buftype);
+                        this->len = 0;
+                        return;
+                    }
+                    this->len = OF_HEADER_LENGTH;
+                    this->len += this->header_pos;
+                    this->data = new uint8_t[this->len];
+                    memcpy(this->data + OF_HEADER_LENGTH, this->header, this->header_pos);
+                    this->pos += this->header_pos + OF_HEADER_LENGTH;
                     init = true;
                 }
+            }
+            if(force_ready) {
+                fprintf(stderr, "btype %d read notify: readN %u pos %d buflen %d force ready.\n", this->buftype, read, this->pos, this->len);
+                this->len = this->pos;
             }
         }
 
@@ -118,8 +205,9 @@ class BaseOFConnection::OFReadBuffer {
             }
             this->data = NULL;
             this->init = false;
+            this->ipv6hdr = false;
 
-            memset(this->header, 0, OF_HEADER_LENGTH);
+            memset(this->header, 0, bt_hdrlen[this->buftype]);
             this->header_pos = 0;
 
             this->pos = 0;
@@ -133,8 +221,11 @@ class BaseOFConnection::OFReadBuffer {
 
         uint8_t* data;
         bool init;
+        bool ipv6hdr;
 
-        uint8_t header[OF_HEADER_LENGTH];
+        OFRbufType buftype;
+        const uint8_t bt_hdrlen[OFBT_MAX];
+        uint8_t header[OF_HEADER_BUF_LENGTH];
         uint16_t header_pos;
 
         uint16_t pos;
@@ -159,12 +250,17 @@ BaseOFConnection::BaseOFConnection(int id,
                         BaseOFHandler* ofhandler,
                         EventLoop* evloop,
                         int fd,
-                        bool secure) {
+                        bool secure,
+                        bocType boctype) {
+    OFRbufType buftype = OFBT_OFMSG;
+    if(boctype == boc_TUN) buftype = OFBT_TUNDATA;
+    if(boctype == boc_TAP) buftype = OFBT_TAPDATA;
     this->id = id;
     // TODO: move event_base to BaseOFConnection::LibEventBaseOFConnection so
     // we don't need to store this here
     this->evloop = evloop;
-    this->buffer = new BaseOFConnection::OFReadBuffer();
+    this->boctype = boctype;
+    this->buffer = new BaseOFConnection::OFReadBuffer(buftype);
     this->manager = NULL;
     this->ofhandler = ofhandler;
     this->m_implementation = new BaseOFConnection::LibEventBaseOFConnection;
@@ -340,17 +436,29 @@ void BaseOFConnection::LibEventBaseOFConnection::immediate_callback(evutil_socke
 void BaseOFConnection::LibEventBaseOFConnection::read_cb(struct bufferevent *bev, void* arg) {
     BaseOFConnection* c = static_cast<BaseOFConnection*>(arg);
     
-    uint16_t len;
+    int16_t len;
     BaseOFConnection::OFReadBuffer* ofbuf = c->buffer;
 
     while (1) {
         // Decide how much we should read
         len = ofbuf->get_read_len();
-        if (len <= 0) break;
+        if (len <= 0) {
+            ofbuf->clear(true);
+            break;
+        }
 
         // Read the data and put it in the buffer
         size_t read = bufferevent_read(bev, ofbuf->get_read_pos(), len);
-        if (read <= 0) break; else ofbuf->read_notify(read);
+        if (read <= 0) {
+            fprintf(stderr, "buftype %u read cb: to read len %d read %lu break A\n", ofbuf->buftype, len, read);
+            ofbuf->clear(true);
+            break;
+         } else if(read < len) {
+             printf("buftype %u read cb: to read len %d read %lu buffer ready.\n", ofbuf->buftype, len, read);
+             ofbuf->read_notify(read, true);
+         } else {
+             ofbuf->read_notify(read);
+         }
 
         // Check if the message is fully received and dispatch
         if (ofbuf->is_ready()) {

@@ -49,7 +49,8 @@ void* BaseOFClient::try_connect(void *arg){
         fprintf(stderr, "Retrying in 5 seconds...\n");
         sleep(5);
     }
-    BaseOFConnection* c = new BaseOFConnection(0,
+
+    BaseOFConnection* c = new BaseOFConnection(boc->id,
                                                boc,
                                                boc->evloop,
                                                sock,
@@ -65,7 +66,7 @@ void BaseOFClient::start_conn(){
 
 bool BaseOFClient::start(bool block) {
     this->blocking = block;
-    start_conn();
+    BaseOFClient::start_conn();
     if (not this->blocking) {
         pthread_create(&t,
                        NULL,
